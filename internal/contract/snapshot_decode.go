@@ -83,8 +83,29 @@ func (b SnapshotBatch) Validate() error {
 	if err := validateServices(b.Services); err != nil {
 		return err
 	}
+	serviceIDs := make(map[string]struct{}, len(b.Services))
+	for _, service := range b.Services {
+		serviceIDs[service.ID] = struct{}{}
+	}
+	for i, process := range b.Processes {
+		if process.ServiceInstanceID == "" {
+			continue
+		}
+		if _, exists := serviceIDs[process.ServiceInstanceID]; !exists {
+			return fmt.Errorf("processes[%d].service_instance_id does not exist in services", i)
+		}
+	}
 	if err := validateBindings(b.Bindings); err != nil {
 		return err
+	}
+	processIDs := make(map[processKey]struct{}, len(b.Processes))
+	for _, process := range b.Processes {
+		processIDs[processKey{pid: process.PID, startTicks: process.StartTicks}] = struct{}{}
+	}
+	for i, binding := range b.Bindings {
+		if _, exists := processIDs[processKey{pid: binding.PID, startTicks: binding.StartTicks}]; !exists {
+			return fmt.Errorf("bindings[%d] does not reference a process in this snapshot", i)
+		}
 	}
 	return nil
 }

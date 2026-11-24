@@ -131,6 +131,9 @@ func (s *Store) PersistSnapshot(ctx context.Context, batch contract.SnapshotBatc
 		}
 		return store.SnapshotResult{}, fmt.Errorf("insert snapshot batch: %w", err)
 	}
+	if err := persistSnapshotFacts(ctx, tx, batch); err != nil {
+		return store.SnapshotResult{}, fmt.Errorf("persist normalized snapshot facts: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE hosts SET last_seen = IF(last_seen IS NULL OR last_seen < ?, ?, last_seen) WHERE host_id = ?`,
 		batch.ObservedAt.UTC(), batch.ObservedAt.UTC(), batch.HostID,

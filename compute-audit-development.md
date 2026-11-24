@@ -5,9 +5,9 @@
 
 ## 当前开发状态（2026-11-24）
 
-已落地的代码包括 audit-server 的 mTLS 快照接收、主机登记入口、MySQL 迁移/幂等入库，以及 audit-agent 的 NVIDIA `nvidia-smi` 进程采集、可配置 Ascend Prometheus 指标解析、`/proc` PID/start_ticks/cgroup/netns 读取、Docker/systemd cgroup 归组、磁盘队列、mTLS 上报、ACK 删除、永久拒绝隔离和网络失败指数退避。Agent 会在上报绑定前复核 PID 的 `start_ticks`，并在快照过大时压缩可选数据、裁剪记录且标记采集不完整。
+已落地的代码包括 audit-server 的 mTLS 快照接收、主机登记入口、MySQL 迁移/幂等入库；快照原始批次、服务、进程、监听 socket 和设备绑定会在同一事务写入独立事实表。audit-agent 已有 NVIDIA `nvidia-smi` 进程采集、可配置 Ascend Prometheus 指标解析、`/proc` PID/start_ticks/cgroup/netns 读取、Docker/systemd cgroup 归组、磁盘队列、mTLS 上报、ACK 删除、永久拒绝隔离和网络失败指数退避。Agent 会在上报绑定前复核 PID 的 `start_ticks`，并在快照过大时压缩可选数据、裁剪记录且标记采集不完整。
 
-当前仍未完成：监听 socket/IP/端口采集、Docker 元数据查询、进程生命周期历史展开、DeepFlow schema/SQL 查询与请求归因、告警规则与通知、Prometheus/Grafana 仪表盘及数据源配置、真实 exporter 指标映射、主机证书/镜像 digest 的正式交付流程。昇腾模板中的 metric/label 是待现场替换占位符。仓库构建检查尚不能替代 NVIDIA 与 910B 实机联调；开发阶段目标规模仍为各一台服务器。
+当前仍未完成：监听 socket/IP/端口采集、Docker 元数据查询、进程生命周期时间窗查询、DeepFlow 请求 SQL 轮询与归因、告警规则与通知、Prometheus/Grafana 仪表盘及数据源配置、真实 exporter 指标映射、主机证书/镜像 digest 的正式交付流程。DeepFlow 客户端已支持安全配置下的 SQL POST 和 `SHOW TAGS`/`SHOW METRICS` 字段发现；要实现请求轮询仍需目标 v7.2.4 实例的真实 schema 结果与服务端 PID/IP 方向样例。昇腾模板中的 metric/label 是待现场替换占位符。仓库构建检查尚不能替代 NVIDIA 与 910B 实机联调；开发阶段目标规模仍为各一台服务器。
 
 ## 1. 项目目标与边界
 
@@ -253,15 +253,16 @@ resolve(event):
 
 接口分类：`inference`（配置确认的推理路径）、`management`、`health`、`unknown`。相同服务的所有接口均可展示，但推理量统计按分类过滤；URL path 清洗、长度限制、敏感路径脱敏。
 
-## 7. 数据模型（逻辑表，迁移时实现）
+## 7. 数据模型
 
-采用 MySQL 8，所有时间 DATETIME(6) UTC，IP 用 VARBINARY(16) 或规范化字符串，64 位观测 ID 用 VARCHAR，关系有效期采用左闭右开。下表是建表契约，禁止在 DeepFlow 内部库建业务表。
+采用 MySQL 8，所有时间 DATETIME(6) UTC，IP 用 VARBINARY(16) 或规范化字符串，64 位观测 ID 用 VARCHAR，关系有效期采用左闭右开。当前已迁移的表标为“已实现”；历史有效区间、请求归因等表仍是后续建表契约。禁止在 DeepFlow 内部库建业务表。
 
 | 表 | 关键字段、约束与索引 |
 |---|---|
 | hosts | host_id PK、hostname、management_ip、arch、vendor、last_seen、status |
 | observer_bindings | deepflow_instance、agent_id、host_id、valid_from/to；索引 agent_id+时间 |
 | snapshot_batches | host_id、batch_id 唯一、boot_id、sequence、observed_at、status、payload_sha256、payload JSON；批次幂等，payload 仅含主机进程/服务/设备事实 |
+| snapshot_services / snapshot_processes / snapshot_listeners / snapshot_device_bindings | 每个快照中的服务、PID 生命周期标识、监听和设备绑定；外键关联该批次；与 `snapshot_batches` 同事务写入（已实现） |
 | devices | device_key PK（含 host_id）、vendor、model、uuid/physical_id、logical_id |
 | process_instances | process_key PK、host_id、boot_id、pid、start_ticks，组合唯一；first/last_seen |
 | service_instances | service_id PK（含主机及实例生命周期）、type、name、container_id、unit、first/last_seen |

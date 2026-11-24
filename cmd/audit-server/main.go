@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"compute-audit/internal/config"
+	"compute-audit/internal/deepflow"
 	"compute-audit/internal/ingest"
 	mysqlstore "compute-audit/internal/store/mysql"
 )
@@ -28,7 +30,7 @@ func main() {
 
 func run() error {
 	configPath := flag.String("config", "configs/server.example.yaml", "path to server YAML config")
-	mode := flag.String("mode", "serve", "mode: serve, migrate, or register-host")
+	mode := flag.String("mode", "serve", "mode: serve, migrate, register-host, or deepflow-schema")
 	hostID := flag.String("host-id", "", "host ID for register-host mode")
 	hostname := flag.String("hostname", "", "host name for register-host mode")
 	arch := flag.String("arch", "", "host architecture for register-host mode")
@@ -41,6 +43,24 @@ func run() error {
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
+	}
+	if *mode == "deepflow-schema" {
+		if !cfg.DeepFlow.Enabled {
+			return fmt.Errorf("deepflow.enabled must be true for deepflow-schema mode")
+		}
+		client, err := deepflow.New(cfg.DeepFlow)
+		if err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		schema, err := client.DiscoverSchema(ctx, cfg.DeepFlow.Database, cfg.DeepFlow.Table)
+		if err != nil {
+			return err
+		}
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(schema)
 	}
 	password, ok := os.LookupEnv(cfg.Database.PasswordEnv)
 	if !ok || password == "" {

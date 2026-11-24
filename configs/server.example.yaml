@@ -12,3 +12,12 @@ database:
   max_open_conns: 20
   max_idle_conns: 5
   conn_max_lifetime: 5m
+deepflow:
+  enabled: false
+  endpoint: http://deepflow-server:20416
+  database: flow_log
+  table: l7_flow_log
+  # Optional: set token_env and provide the token through the process environment.
+  # token_env: DEEPFLOW_TOKEN
+  # ca_file: /etc/compute-audit/tls/deepflow-ca.crt
+  timeout: 30s

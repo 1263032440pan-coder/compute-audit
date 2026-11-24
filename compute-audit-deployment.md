@@ -513,7 +513,7 @@ curl -fsS -X POST "$DF_QUERY_URL" \
 
 ## 9. 自研程序交付与部署（研发完成后）
 
-本节的二进制、参数、配置及 endpoints 是约定的交付接口；没有对应源码前不能直接执行。研发应提供 Linux amd64/arm64 二进制、校验和、数据库迁移、配置校验工具和 Grafana JSON。PoC 以 nvidia-smi 为默认 GPU PID 后端，使用纯 Go 构建；若启用 NVML/CGO，则按目标架构构建与驱动兼容版本。
+Agent/Server 源码、配置模板与初始迁移已在仓库提供；正式交付仍需生成 Linux amd64/arm64 制品、校验和、镜像 digest、证书和实机映射。PoC 以 nvidia-smi 为默认 GPU PID 后端，使用纯 Go 构建；若启用 NVML/CGO，则按目标架构构建与驱动兼容版本。
 
 ### 9.1 构建约定
 
@@ -521,6 +521,7 @@ curl -fsS -X POST "$DF_QUERY_URL" \
 
 ```bash
 docker buildx build --platform linux/amd64 --load -t compute-audit/audit-server:dev .
+docker buildx build --platform linux/amd64 --load -t compute-audit/audit-agent:dev -f Dockerfile.agent .
 ```
 
 正式构建时将 Dockerfile 构建阶段基础镜像也固定到经过审核的 SHA256 digest；本地 `dev` 标签仅用于开发。
@@ -575,9 +576,23 @@ database:
   name: compute_audit
   user: audit_app
   password_env: AUDIT_DB_PASSWORD
+deepflow:
+  enabled: false
+  endpoint: http://deepflow-server:20416
+  database: flow_log
+  table: l7_flow_log
+  timeout: 30s
 ```
 
-当前实现的接收端使用 mTLS，并要求客户端证书 Subject Common Name 与快照 `host_id` 完全一致。配置 DB 密码、证书、目录权限及私钥保护。DeepFlow 查询配置将在摄取服务完成后加入当前配置契约。先启动独立数据库容器，再通过审计镜像内的命令迁移 schema 并登记两台目标主机：
+当前实现的接收端使用 mTLS，并要求客户端证书 Subject Common Name 与快照 `host_id` 完全一致。配置 DB 密码、证书、目录权限及私钥保护。启动 DeepFlow 字段发现前，将 `deepflow.enabled` 设为 `true`，填写该实例 SQL Query API 地址；可使用 `token_env` 从环境变量读取 Bearer Token，可选 `ca_file` 指定内部 CA。此模式只访问 DeepFlow，不连接审计 MySQL，也不改写 DeepFlow 数据：
+
+```bash
+docker compose --profile api -f compose.dev.yaml run --rm --no-deps audit-server --mode deepflow-schema --config /etc/compute-audit/server.yaml
+```
+
+该命令输出 `SHOW TAGS` 与 `SHOW METRICS` 结果，需脱敏后归档，并依据真实字段配置后续请求轮询。DeepFlow 字段会因版本、部署与采集配置而异，未核对 server PID、客户端/服务端 IP 方向及时间单位前，不得启用请求归因。DeepFlow SQL Query API 使用 POST 表单字段 `db`/`sql`，响应由列名与行数组构成，程序会保留 64 位整数精度；具体字段仍以实际实例输出为准。
+
+先启动独立数据库容器，再通过审计镜像内的命令迁移 schema 并登记两台目标主机：
 
 ```bash
 docker compose -f compose.yaml -f compose.audit.yaml config --quiet
@@ -589,7 +604,7 @@ docker compose -f compose.yaml -f compose.audit.yaml up -d audit-server
 docker compose -f compose.yaml -f compose.audit.yaml logs --tail=100 audit-server
 ```
 
-当前 `/healthz`、`/readyz`、`/metrics` 和上报接口均要求 mTLS；Prometheus 抓取 `/metrics` 时配置专用客户端证书。不要将证书校验设为 skip_verify。检查 schema 已迁移、服务 ready，后续 DeepFlow 查询模块完成后再验收游标推进。
+当前 `/healthz`、`/readyz`、`/metrics` 和上报接口均要求 mTLS；Prometheus 抓取 `/metrics` 时配置专用客户端证书。不要将证书校验设为 skip_verify。检查 schema 已迁移、服务 ready；请求轮询与游标推进尚未实现。
 
 ### 9.3 audit-agent 配置与 systemd
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -18,6 +19,17 @@ type Config struct {
 	Listen   string         `yaml:"listen"`
 	TLS      TLSConfig      `yaml:"tls"`
 	Database DatabaseConfig `yaml:"database"`
+	DeepFlow DeepFlowConfig `yaml:"deepflow"`
+}
+
+type DeepFlowConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Endpoint string `yaml:"endpoint"`
+	Database string `yaml:"database"`
+	Table    string `yaml:"table"`
+	TokenEnv string `yaml:"token_env"`
+	CAFile   string `yaml:"ca_file"`
+	Timeout  string `yaml:"timeout"`
 }
 
 type TLSConfig struct {
@@ -101,6 +113,24 @@ func Load(path string) (Config, error) {
 	}
 	if cfg.TLS.CertFile == "" || cfg.TLS.KeyFile == "" || cfg.TLS.ClientCAFile == "" {
 		return Config{}, fmt.Errorf("tls.cert_file, tls.key_file, and tls.client_ca_file are required")
+	}
+	if cfg.DeepFlow.Enabled {
+		endpoint, err := url.ParseRequestURI(cfg.DeepFlow.Endpoint)
+		if err != nil || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.Host == "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" {
+			return Config{}, fmt.Errorf("deepflow.endpoint must be an HTTP(S) server URL without userinfo, query, or fragment")
+		}
+		if cfg.DeepFlow.Database == "" {
+			cfg.DeepFlow.Database = "flow_log"
+		}
+		if cfg.DeepFlow.Table == "" {
+			cfg.DeepFlow.Table = "l7_flow_log"
+		}
+		if cfg.DeepFlow.Timeout == "" {
+			cfg.DeepFlow.Timeout = "30s"
+		}
+		if duration, err := time.ParseDuration(cfg.DeepFlow.Timeout); err != nil || duration <= 0 {
+			return Config{}, fmt.Errorf("deepflow.timeout must be a positive duration")
+		}
 	}
 	return cfg, nil
 }
