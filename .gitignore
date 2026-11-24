@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+configs/server.yaml
+configs/agent.yaml
+configs/tls/
+tls/
+dist/
+build/
+*.pem
+*.key
+*.log
+*.test
+coverage.out

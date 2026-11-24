@@ -1,0 +1,47 @@
+services:
+  audit-db:
+    image: mysql:8.0.46
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: compute_audit
+      MYSQL_USER: audit_app
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD}
+    command: ["--default-time-zone=+00:00"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - audit-net
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+  audit-server:
+    profiles: ["api"]
+    image: compute-audit/audit-server:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["--config", "/etc/compute-audit/server.yaml"]
+    environment:
+      AUDIT_DB_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD}
+    volumes:
+      - ./configs/server.yaml:/etc/compute-audit/server.yaml:ro
+      - ./configs/tls:/etc/compute-audit/tls:ro
+    ports:
+      - "${AUDIT_SERVER_BIND_IP:-127.0.0.1}:18080:18080"
+    networks:
+      - audit-net
+    depends_on:
+      audit-db:
+        condition: service_healthy
+
+volumes:
+  mysql-data: {}
+
+networks:
+  audit-net: {}

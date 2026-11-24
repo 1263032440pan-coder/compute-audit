@@ -1,4 +1,4 @@
-CREATE TABLE hosts (
+CREATE TABLE IF NOT EXISTS hosts (
     host_id VARCHAR(128) NOT NULL,
     hostname VARCHAR(255) NOT NULL DEFAULT '',
     management_ip VARBINARY(16) NULL,
@@ -12,7 +12,7 @@ CREATE TABLE hosts (
     PRIMARY KEY (host_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE snapshot_batches (
+CREATE TABLE IF NOT EXISTS snapshot_batches (
     host_id VARCHAR(128) NOT NULL,
     batch_id VARCHAR(191) NOT NULL,
     boot_id VARCHAR(128) NOT NULL,
@@ -22,6 +22,7 @@ CREATE TABLE snapshot_batches (
     schema_version SMALLINT UNSIGNED NOT NULL,
     status JSON NOT NULL,
     payload_sha256 BINARY(32) NOT NULL,
+    payload JSON NOT NULL,
     PRIMARY KEY (host_id, batch_id),
     UNIQUE KEY uq_snapshot_sequence (host_id, boot_id, sequence),
     KEY idx_snapshot_observed_at (observed_at),

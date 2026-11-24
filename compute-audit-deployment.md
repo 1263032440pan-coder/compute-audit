@@ -51,6 +51,25 @@ flowchart LR
 | 自研 audit-server | √ | — | — |
 | 自研 audit-agent | — | √ | √ |
 
+### 1.1 本机 Docker 开发
+
+本机开发使用独立 `compute-audit-dev` Compose 项目。默认先启动 MySQL；`audit-db` 不发布宿主机端口，数据保存在本项目独立命名卷。不要连接、停止或重建现有 `smart-screen-mysql` 容器。`audit-server` 使用 `api` profile；服务端运行需要服务器证书和客户端 CA，Agent 上报时还需配置 CN 与 `host_id` 一致的客户端证书。
+
+```powershell
+Copy-Item .env.example .env
+Copy-Item configs/server.example.yaml configs/server.yaml
+# 编辑 .env 中的本地随机密码；把开发用证书放入 configs/tls/，不要提交私钥
+docker compose -f compose.dev.yaml config --quiet
+docker compose -f compose.dev.yaml up -d audit-db
+docker compose --profile api -f compose.dev.yaml build audit-server
+docker compose --profile api -f compose.dev.yaml run --rm --no-deps audit-server --mode migrate --config /etc/compute-audit/server.yaml
+docker compose --profile api -f compose.dev.yaml run --rm --no-deps audit-server --mode register-host --config /etc/compute-audit/server.yaml --host-id gpu01 --hostname gpu01 --arch x86_64 --vendor nvidia
+docker compose --profile api -f compose.dev.yaml run --rm --no-deps audit-server --mode register-host --config /etc/compute-audit/server.yaml --host-id npu01 --hostname npu01 --arch REPLACE_WITH_UNAME_M --vendor ascend
+docker compose --profile api -f compose.dev.yaml up -d audit-server
+```
+
+如需让远端两台测试主机访问本机接收端，将 `AUDIT_SERVER_BIND_IP` 改为本机受控管理网 IP；默认只绑定回环地址。开发 Docker Desktop 当前约 7.6 GiB 内存，DeepFlow + ClickHouse 尚未纳入此轻量开发 Compose，不能据此推断完整中心栈已满足资源要求。
+
 ## 2. 环境准备与变更前检查
 
 ### 2.1 资源与版本
@@ -498,6 +517,14 @@ curl -fsS -X POST "$DF_QUERY_URL" \
 
 ### 9.1 构建约定
 
+本机 Docker 开发优先构建 Linux 容器镜像，无需在 Windows 上直接运行服务端：
+
+```bash
+docker buildx build --platform linux/amd64 --load -t compute-audit/audit-server:dev .
+```
+
+正式构建时将 Dockerfile 构建阶段基础镜像也固定到经过审核的 SHA256 digest；本地 `dev` 标签仅用于开发。
+
 ```bash
 # 在自研代码仓库根目录，代码完成后执行
 mkdir -p dist
@@ -548,26 +575,21 @@ database:
   name: compute_audit
   user: audit_app
   password_env: AUDIT_DB_PASSWORD
-deepflow:
-  query_url: 'http://REPLACE_WITH_ACTUAL_INTERNAL_QUERY_ADDRESS/v1/query/'
-  profile: /etc/compute-audit/deepflow-profile.yaml
-  poll_interval: 10s
-  delay: 30s
-  overlap: 120s
-retention:
-  audit_days: 7
-  relation_days: 30
 ```
 
-实际交付须将 profile 同样只读挂载，按实际可达的 DeepFlow 内部网络和认证配置连接。将主机证书主体与 host_id 绑定，先初始化主机登记和 agent_id 映射；配置 DB 密码、证书、目录权限及私钥保护。执行迁移（约定命令 `audit-server migrate --config ...`，以实际实现为准），之后使用：
+当前实现的接收端使用 mTLS，并要求客户端证书 Subject Common Name 与快照 `host_id` 完全一致。配置 DB 密码、证书、目录权限及私钥保护。DeepFlow 查询配置将在摄取服务完成后加入当前配置契约。先启动独立数据库容器，再通过审计镜像内的命令迁移 schema 并登记两台目标主机：
 
 ```bash
 docker compose -f compose.yaml -f compose.audit.yaml config --quiet
+docker compose -f compose.yaml -f compose.audit.yaml up -d audit-db
+docker compose -f compose.yaml -f compose.audit.yaml run --rm --no-deps --entrypoint /audit-server audit-server --mode migrate --config /etc/compute-audit/server.yaml
+docker compose -f compose.yaml -f compose.audit.yaml run --rm --no-deps --entrypoint /audit-server audit-server --mode register-host --config /etc/compute-audit/server.yaml --host-id gpu01 --hostname gpu01 --arch x86_64 --vendor nvidia
+docker compose -f compose.yaml -f compose.audit.yaml run --rm --no-deps --entrypoint /audit-server audit-server --mode register-host --config /etc/compute-audit/server.yaml --host-id npu01 --hostname npu01 --arch REPLACE_WITH_UNAME_M --vendor ascend
 docker compose -f compose.yaml -f compose.audit.yaml up -d audit-server
 docker compose -f compose.yaml -f compose.audit.yaml logs --tail=100 audit-server
 ```
 
-服务健康端点 `/healthz`、`/readyz`、`/metrics` 按设计限制为内部访问或 mTLS；Prometheus 可通过 audit-net 使用专用 scrape 证书采集服务健康指标。不要将证书校验设为 skip_verify。检查 schema 已迁移、DeepFlow 查询正常、游标推进。
+当前 `/healthz`、`/readyz`、`/metrics` 和上报接口均要求 mTLS；Prometheus 抓取 `/metrics` 时配置专用客户端证书。不要将证书校验设为 skip_verify。检查 schema 已迁移、服务 ready，后续 DeepFlow 查询模块完成后再验收游标推进。
 
 ### 9.3 audit-agent 配置与 systemd
 

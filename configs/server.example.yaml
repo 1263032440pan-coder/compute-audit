@@ -1,0 +1,14 @@
+listen: "0.0.0.0:18080"
+tls:
+  cert_file: /etc/compute-audit/tls/server.crt
+  key_file: /etc/compute-audit/tls/server.key
+  client_ca_file: /etc/compute-audit/tls/agent-ca.crt
+  require_client_cert: true
+database:
+  host: audit-db:3306
+  name: compute_audit
+  user: audit_app
+  password_env: AUDIT_DB_PASSWORD
+  max_open_conns: 20
+  max_idle_conns: 5
+  conn_max_lifetime: 5m

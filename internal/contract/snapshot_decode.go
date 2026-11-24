@@ -18,6 +18,10 @@ func DecodeSnapshot(r io.Reader) (SnapshotBatch, error) {
 	if err != nil {
 		return SnapshotBatch{}, fmt.Errorf("read snapshot body: %w", err)
 	}
+	return DecodeSnapshotBytes(body)
+}
+
+func DecodeSnapshotBytes(body []byte) (SnapshotBatch, error) {
 	if len(body) > MaxSnapshotBodyBytes {
 		return SnapshotBatch{}, fmt.Errorf("snapshot body exceeds %d bytes", MaxSnapshotBodyBytes)
 	}

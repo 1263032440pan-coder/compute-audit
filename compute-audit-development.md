@@ -167,7 +167,7 @@ Agent 仅持有本主机事实，不尝试推断跨主机调用。Docker 与 sys
 
 ### 5.3 上报协议
 
-`POST /api/v1/agent/snapshots`，HTTPS，按 host_id 分配凭证，推荐 mTLS；请求头 Idempotency-Key 为 batch_id。服务端校验主机身份与凭证一致，限制请求体（默认 2 MiB），校验枚举和时间偏差。
+`POST /api/v1/agent/snapshots`，HTTPS，按 host_id 分配凭证，强制 mTLS；客户端证书 Subject Common Name 必须与已登记的 `host_id` 一致。请求头 `Idempotency-Key` 必须等于 `batch_id`。服务端限制请求体（默认 2 MiB）并校验枚举；观察时间超前服务端 2 秒以上时记录告警指标但仍保留批次，迟到批次按摄取延迟处理。只有事务提交后才返回 ACK。同一 host/batch ID 内容哈希相同则返回相同 ACK，内容不同返回冲突。
 
 ```json
 {
@@ -255,7 +255,7 @@ resolve(event):
 |---|---|
 | hosts | host_id PK、hostname、management_ip、arch、vendor、last_seen、status |
 | observer_bindings | deepflow_instance、agent_id、host_id、valid_from/to；索引 agent_id+时间 |
-| snapshot_batches | host_id、batch_id 唯一、boot_id、sequence、observed_at、status；批次幂等 |
+| snapshot_batches | host_id、batch_id 唯一、boot_id、sequence、observed_at、status、payload_sha256、payload JSON；批次幂等，payload 仅含主机进程/服务/设备事实 |
 | devices | device_key PK（含 host_id）、vendor、model、uuid/physical_id、logical_id |
 | process_instances | process_key PK、host_id、boot_id、pid、start_ticks，组合唯一；first/last_seen |
 | service_instances | service_id PK（含主机及实例生命周期）、type、name、container_id、unit、first/last_seen |
