@@ -8,10 +8,11 @@ import (
 )
 
 var (
-	ErrIdempotencyConflict = errors.New("batch_id or sequence was already accepted with different content")
-	ErrUnknownHost         = errors.New("host_id is not registered")
-	ErrInactiveHost        = errors.New("host_id is not active")
-	ErrHostExists          = errors.New("host_id is already registered")
+	ErrIdempotencyConflict     = errors.New("batch_id or sequence was already accepted with different content")
+	ErrUnknownHost             = errors.New("host_id is not registered")
+	ErrInactiveHost            = errors.New("host_id is not active")
+	ErrHostExists              = errors.New("host_id is already registered")
+	ErrObserverBindingConflict = errors.New("observer agent mapping overlaps an existing host mapping")
 )
 
 type SnapshotResult struct {

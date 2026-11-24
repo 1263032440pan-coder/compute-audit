@@ -23,13 +23,18 @@ type Config struct {
 }
 
 type DeepFlowConfig struct {
-	Enabled  bool   `yaml:"enabled"`
-	Endpoint string `yaml:"endpoint"`
-	Database string `yaml:"database"`
-	Table    string `yaml:"table"`
-	TokenEnv string `yaml:"token_env"`
-	CAFile   string `yaml:"ca_file"`
-	Timeout  string `yaml:"timeout"`
+	Enabled        bool   `yaml:"enabled"`
+	Endpoint       string `yaml:"endpoint"`
+	Database       string `yaml:"database"`
+	Table          string `yaml:"table"`
+	InstanceID     string `yaml:"instance_id"`
+	Profile        string `yaml:"profile_file"`
+	TokenEnv       string `yaml:"token_env"`
+	CAFile         string `yaml:"ca_file"`
+	Timeout        string `yaml:"timeout"`
+	PageSize       int    `yaml:"page_size"`
+	MaxPages       int    `yaml:"max_pages_per_window"`
+	SnapshotMaxAge string `yaml:"snapshot_max_age"`
 }
 
 type TLSConfig struct {
@@ -125,11 +130,29 @@ func Load(path string) (Config, error) {
 		if cfg.DeepFlow.Table == "" {
 			cfg.DeepFlow.Table = "l7_flow_log"
 		}
+		if cfg.DeepFlow.InstanceID == "" {
+			cfg.DeepFlow.InstanceID = "deepflow-default"
+		}
 		if cfg.DeepFlow.Timeout == "" {
 			cfg.DeepFlow.Timeout = "30s"
 		}
+		if cfg.DeepFlow.PageSize == 0 {
+			cfg.DeepFlow.PageSize = 1000
+		}
+		if cfg.DeepFlow.MaxPages == 0 {
+			cfg.DeepFlow.MaxPages = 100
+		}
+		if cfg.DeepFlow.SnapshotMaxAge == "" {
+			cfg.DeepFlow.SnapshotMaxAge = "30s"
+		}
+		if cfg.DeepFlow.PageSize < 1 || cfg.DeepFlow.PageSize > 10000 || cfg.DeepFlow.MaxPages < 1 || cfg.DeepFlow.MaxPages > 1000 {
+			return Config{}, fmt.Errorf("deepflow page_size or max_pages_per_window is out of range")
+		}
 		if duration, err := time.ParseDuration(cfg.DeepFlow.Timeout); err != nil || duration <= 0 {
 			return Config{}, fmt.Errorf("deepflow.timeout must be a positive duration")
+		}
+		if duration, err := time.ParseDuration(cfg.DeepFlow.SnapshotMaxAge); err != nil || duration <= 0 {
+			return Config{}, fmt.Errorf("deepflow.snapshot_max_age must be a positive duration")
 		}
 	}
 	return cfg, nil

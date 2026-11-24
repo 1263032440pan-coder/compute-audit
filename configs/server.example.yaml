@@ -17,7 +17,12 @@ deepflow:
   endpoint: http://deepflow-server:20416
   database: flow_log
   table: l7_flow_log
+  instance_id: deepflow-primary
+  profile_file: /etc/compute-audit/deepflow-profile.yaml
   # Optional: set token_env and provide the token through the process environment.
   # token_env: DEEPFLOW_TOKEN
   # ca_file: /etc/compute-audit/tls/deepflow-ca.crt
   timeout: 30s
+  page_size: 1000
+  max_pages_per_window: 100
+  snapshot_max_age: 30s

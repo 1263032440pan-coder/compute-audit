@@ -1,7 +1,7 @@
 # 异构智算资源无侵入式审计系统 — 部署文档
 
 > 版本：v1.0 | 日期：2026-11-24 | 适用环境：Linux 内网、在用 NVIDIA/昇腾智算服务器、Docker/systemd 业务服务。  
-> 配套：[开发文档](compute-audit-development.md)。本文件是安装与验收操作手册；audit-server 的摄取骨架和 audit-agent 的 PID/设备绑定上报流程已实现，但 DeepFlow 查询关联、Dashboard 与实机验收仍未完成。文中的部署命令需按用户环境核对，未在用户真实服务器上执行过。
+> 配套：[开发文档](compute-audit-development.md)。本文件是安装与验收操作手册；audit-server 的摄取、DeepFlow 手工窗口查询/导入骨架和 audit-agent 的 PID/设备绑定上报流程已实现。DeepFlow 自动游标、Dashboard 与真实硬件验收仍未完成。文中的部署命令需按用户环境核对，未在用户真实服务器上执行过。
 
 ## 1. 部署拓扑及选择
 
@@ -591,6 +591,15 @@ docker compose --profile api -f compose.dev.yaml run --rm --no-deps audit-server
 ```
 
 该命令输出 `SHOW TAGS` 与 `SHOW METRICS` 结果，需脱敏后归档，并依据真实字段配置后续请求轮询。DeepFlow 字段会因版本、部署与采集配置而异，未核对 server PID、客户端/服务端 IP 方向及时间单位前，不得启用请求归因。DeepFlow SQL Query API 使用 POST 表单字段 `db`/`sql`，响应由列名与行数组构成，程序会保留 64 位整数精度；具体字段仍以实际实例输出为准。
+
+核对字段后，将映射写入 `configs/deepflow-profile.example.yaml` 对应的运行配置，并将 `deepflow.enabled` 设为 true。手工导入窗口示例（RFC3339 时间、UTC 偏移明确）：
+
+```bash
+docker compose --profile api -f compose.dev.yaml run --rm --no-deps audit-server --mode register-observer --config /etc/compute-audit/server.yaml --deepflow-instance-id deepflow-primary --observer-agent-id REPLACE_WITH_VERIFIED_AGENT_ID --host-id gpu01 --valid-from 2026-11-24T00:00:00Z
+docker compose --profile api -f compose.dev.yaml run --rm --no-deps audit-server --mode deepflow-poll --config /etc/compute-audit/server.yaml --from 2026-11-24T06:00:00Z --to 2026-11-24T06:01:00Z
+```
+
+先为每个 DeepFlow observer 配置不重叠的有效期映射，agent ID 必须从真实数据确认；不要把 DeepFlow agent ID 猜成主机名。Profile 中的 `service_side_value` 只有确认请求日志的服务端观察点枚举后才填写。若 observer 更换主机，先用 `--mode close-observer --valid-to ...` 关闭旧映射，再从同一时刻注册新映射，区间按左闭右开解释。导入按已配置的 page size 查询左闭右开的结束时间窗口，并逐页在审计库事务写入；重复运行相同窗口会校验归一化摘要、去重并重算当前关联。到达最大页数但没有确认窗口结束时会返回不完整，不提供自动游标，需人工缩小窗口后重跑。请求起始时间必须位于有效采样窗口内；旧数据、缺 PID、采集部分失败和源时间未知都会保留未知/不完整状态，不将这些状态伪报为已归因。
 
 先启动独立数据库容器，再通过审计镜像内的命令迁移 schema 并登记两台目标主机：
 

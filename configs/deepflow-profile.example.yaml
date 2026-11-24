@@ -1,0 +1,19 @@
+# Replace each field name after running `--mode deepflow-schema` against the
+# target DeepFlow v7.2.4 instance and validating server/client direction.
+event_id: REPLACE_WITH_UNIQUE_EVENT_ID_FIELD
+start_time: REPLACE_WITH_REQUEST_START_FIELD
+end_time: REPLACE_WITH_REQUEST_END_FIELD
+source_ip: REPLACE_WITH_VERIFIED_SOURCE_IP_FIELD
+destination_ip: REPLACE_WITH_VERIFIED_DESTINATION_IP_FIELD
+server_pid: REPLACE_WITH_VERIFIED_SERVER_PID_FIELD
+observer_agent_id: REPLACE_WITH_OBSERVER_AGENT_ID_FIELD
+tenant_id: REPLACE_WITH_TENANT_FIELD
+method: REPLACE_WITH_METHOD_FIELD
+path: REPLACE_WITH_REQUEST_RESOURCE_FIELD
+status_code: REPLACE_WITH_RESPONSE_CODE_FIELD
+duration: REPLACE_WITH_RESPONSE_DURATION_FIELD
+observation_point: REPLACE_WITH_OBSERVATION_POINT_FIELD
+# Set only after verifying the actual server-side enum value in this instance.
+service_side_value: REPLACE_WITH_VERIFIED_SERVER_SIDE_VALUE
+time_unit: microseconds
+duration_unit: microseconds

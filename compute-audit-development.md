@@ -7,7 +7,7 @@
 
 已落地的代码包括 audit-server 的 mTLS 快照接收、主机登记入口、MySQL 迁移/幂等入库；快照原始批次、服务、进程、监听 socket 和设备绑定会在同一事务写入独立事实表。audit-agent 已有 NVIDIA `nvidia-smi` 进程采集、可配置 Ascend Prometheus 指标解析、`/proc` PID/start_ticks/cgroup/netns 读取、Docker/systemd cgroup 归组、磁盘队列、mTLS 上报、ACK 删除、永久拒绝隔离和网络失败指数退避。Agent 会在上报绑定前复核 PID 的 `start_ticks`，并在快照过大时压缩可选数据、裁剪记录且标记采集不完整。
 
-当前仍未完成：监听 socket/IP/端口采集、Docker 元数据查询、进程生命周期时间窗查询、DeepFlow 请求 SQL 轮询与归因、告警规则与通知、Prometheus/Grafana 仪表盘及数据源配置、真实 exporter 指标映射、主机证书/镜像 digest 的正式交付流程。DeepFlow 客户端已支持安全配置下的 SQL POST 和 `SHOW TAGS`/`SHOW METRICS` 字段发现；要实现请求轮询仍需目标 v7.2.4 实例的真实 schema 结果与服务端 PID/IP 方向样例。昇腾模板中的 metric/label 是待现场替换占位符。仓库构建检查尚不能替代 NVIDIA 与 910B 实机联调；开发阶段目标规模仍为各一台服务器。
+当前仍未完成：监听 socket/IP/端口采集、Docker 元数据查询、进程生命周期时间窗查询、DeepFlow 自动游标与定时轮询、真实 server PID/IP 方向字段验证、告警规则与通知、Prometheus/Grafana 仪表盘及数据源配置、真实 exporter 指标映射、主机证书/镜像 digest 的正式交付流程。DeepFlow 手工窗口导入已支持通过 observer_agent_id 的人工有效期映射定位 host，再按事件时间、服务端 PID 和最近有效进程快照匹配服务与设备；快照超时、采集不完整、来源时间未知均保留显式状态。仍需目标 v7.2.4 实例的真实 schema、方向样例和两个硬件节点联调。昇腾模板中的 metric/label 是待现场替换占位符。仓库构建检查尚不能替代 NVIDIA 与 910B 实机联调；开发阶段目标规模仍为各一台服务器。
 
 ## 1. 项目目标与边界
 
@@ -27,6 +27,7 @@
 | 审计 | 请求时间、观察到的来源 IP、目标服务、方法、路径、状态、耗时、关联设备、关联依据 |
 | 界面 | 复用 Grafana，不建设 React 管理门户 |
 | 安全 | 默认不存请求/响应正文、凭证、完整查询字符串；访问控制、异常告警、采集健康监控 |
+| 管理账号 | 仅一个超级管理员，不设计普通审计员或其他角色权限矩阵；登录/账号交付尚待实现 |
 
 非一期范围：精确请求级算力计费、自动调度/阻断、模型训练监控专用功能、全网原始客户端身份还原、强合规不可抵赖审计、跨容器/跨主机无条件自动归因。无证据的关系必须标记未知，不允许猜测。
 
@@ -270,8 +271,9 @@ resolve(event):
 | service_socket_history | service_id、netns、ip、port、process_key、valid_from/to；索引 host+port+时间 |
 | device_binding_history | device_key、process_key、first_seen、last_seen、valid_from/to、confidence、status |
 | service_relations | API service_id、worker service_id、valid_from/to、approved_by、evidence |
-| audit_events | event_id PK、raw_event_id、observer_id、start/end、source/destination、path、method、status、duration_ms、service_id、attribution_status、confidence、rule_version；源 ID 组合唯一；索引 time+service、time+IP、time+status |
-| audit_event_devices | event_id、device_key、evidence、relation_version，组合唯一；索引 device_key+event_id |
+| observer_bindings | DeepFlow 实例+observer_agent_id+host_id、valid_from/to；禁止同一 observer 的主机映射重叠（已实现） |
+| audit_events | event_id PK、DeepFlow 实例/tenant/raw_event_id、start/end、来源/目标 IP、observer、server_pid、path、method、status、duration_ms；源 ID 组合唯一，保存脱敏归一化字段摘要（已实现） |
+| audit_event_attributions / audit_event_devices | 每次导入更新当前匹配结果及设备证据；保存状态、host、PID start_ticks、服务、设备与置信类型（基础匹配已实现），决策版本历史待实现 |
 | ingest_cursors | source_id PK、complete_until、last_success、error |
 | audit_rules | rule_id、service scope、CIDR、path patterns、version、enabled |
 | audit_alerts | alert_id、rule_id、event_id、severity、status、created_at、dedup_key |
@@ -315,7 +317,7 @@ GROUP BY observed_src_ip ORDER BY calls DESC LIMIT 20;
 ## 9. 安全与可靠性
 
 - 新增组件仅旁路、只读采集，不重启现有推理服务，不修改驱动、不改变网络路由。eBPF/驱动访问的权限单独审批；Docker socket 即使只读挂载也具有高权限风险，优先 procfs/cgroup，必要时使用受限代理。
-- Agent→Server 使用 TLS/mTLS、逐主机凭证；Exporter、数据库、DeepFlow API 不对公网开放。Grafana 最小权限和只读账号；普通审计员不能访问原始敏感日志。
+- Agent→Server 使用 TLS/mTLS、逐主机凭证；Exporter、数据库、DeepFlow API 不对公网开放。系统范围只保留一个超级管理员，不增加其他审计角色；Grafana 暴露与登录配置需按此约束实施。
 - 自监控指标：snapshot_age、spool_bytes、upload_failures、ingest_lag、query_errors、unattributed_ratio、dedup_count、source_drop_detected。高基数 PID/请求 ID 不作为自监控指标标签。
 - DeepFlow 可能采样、限流、丢事件；不能宣称零丢失。必须记录可观测缺口、配置与版本；同步主机时钟，默认偏差超 2 秒告警。
 - PoC 不满足强合规防篡改要求。生产升级追加不可变归档、审计员操作记录、备份恢复、日志留存审批和容量/故障测试。
