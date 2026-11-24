@@ -1,0 +1,15 @@
+# GPU node example. Replace host identity, endpoint, and certificate paths.
+host_id: gpu01
+vendor: nvidia
+interval: 10s
+report:
+  url: https://audit-center.internal:18080/api/v1/agent/snapshots
+  ca_file: /etc/compute-audit/tls/ca.crt
+  cert_file: /etc/compute-audit/tls/client.crt
+  key_file: /etc/compute-audit/tls/client.key
+spool:
+  directory: /var/lib/compute-audit/spool
+  max_bytes: 536870912
+nvidia:
+  smi_path: /usr/bin/nvidia-smi
+  timeout: 5s

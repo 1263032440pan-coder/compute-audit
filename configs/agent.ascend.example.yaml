@@ -1,0 +1,22 @@
+# 910B node example. Set metric and label names from this host's actual
+# HDK-matched NPU Exporter output before deployment.
+host_id: npu01
+vendor: ascend
+interval: 10s
+report:
+  url: https://audit-center.internal:18080/api/v1/agent/snapshots
+  ca_file: /etc/compute-audit/tls/ca.crt
+  cert_file: /etc/compute-audit/tls/client.crt
+  key_file: /etc/compute-audit/tls/client.key
+spool:
+  directory: /var/lib/compute-audit/spool
+  max_bytes: 536870912
+ascend:
+  metrics_url: http://127.0.0.1:8082/metrics
+  metric_name: REPLACE_WITH_PROCESS_METRIC
+  pid_label: REPLACE_WITH_HOST_PID_LABEL
+  device_labels:
+    - REPLACE_WITH_DEVICE_ID_LABEL
+  # Set memory_label and memory_unit only after checking the real metric unit.
+  source_time_known: false
+  timeout: 5s

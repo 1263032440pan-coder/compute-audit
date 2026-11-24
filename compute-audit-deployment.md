@@ -1,7 +1,7 @@
 # 异构智算资源无侵入式审计系统 — 部署文档
 
 > 版本：v1.0 | 日期：2026-11-24 | 适用环境：Linux 内网、在用 NVIDIA/昇腾智算服务器、Docker/systemd 业务服务。  
-> 配套：[开发文档](compute-audit-development.md)。本文件是安装与验收操作手册，开源部分可按条件部署；audit-agent、audit-server 与专项 Dashboard 尚需按开发文档实现和构建，文中的自研命令、配置为交付契约，并非现成可下载程序。未在用户真实服务器上执行过这些命令。
+> 配套：[开发文档](compute-audit-development.md)。本文件是安装与验收操作手册；audit-server 的摄取骨架和 audit-agent 的 PID/设备绑定上报流程已实现，但 DeepFlow 查询关联、Dashboard 与实机验收仍未完成。文中的部署命令需按用户环境核对，未在用户真实服务器上执行过。
 
 ## 1. 部署拓扑及选择
 
@@ -593,29 +593,13 @@ docker compose -f compose.yaml -f compose.audit.yaml logs --tail=100 audit-serve
 
 ### 9.3 audit-agent 配置与 systemd
 
-研发完成后，在每台目标宿主机安装匹配架构的二进制到 `/usr/local/bin/audit-agent`，从交付目录验证 SHA256；创建 `/etc/compute-audit`、`/var/lib/compute-audit/spool`，由实际运行身份持有，权限最小化。每台独立客户端证书。
+从项目根目录可使用 `Dockerfile.agent` 构建 Agent 镜像；生产试点建议先在目标 Linux 宿主机原生运行二进制，以确保读取到宿主 `/proc` 并使用现有驱动工具。将匹配架构的二进制安装到 `/usr/local/bin/audit-agent`，核对交付 SHA256；创建 `/etc/compute-audit`、`/var/lib/compute-audit/spool`，由实际运行身份持有，权限最小化。每台独立客户端证书。Docker Desktop 可用于镜像构建，不能替代目标 Linux 主机上的 `/proc`、驱动和 910B Exporter 联调。
 
-`/etc/compute-audit/agent.yaml` 约定（GPU 节点示例）：
+GPU 节点可从 [`configs/agent.nvidia.example.yaml`](configs/agent.nvidia.example.yaml) 创建 `/etc/compute-audit/agent.yaml`。该配置要求 `nvidia-smi` 在 Agent 运行环境内可执行：
 
-```yaml
-host_id: gpu01
-vendor: nvidia
-interval: 10s
-nvidia:
-  backend: nvidia-smi
-ascend:
-  metrics_url: 'http://127.0.0.1:8082/metrics'
-report:
-  url: 'https://audit-center.internal:18080/api/v1/agent/snapshots'
-  ca_file: /etc/compute-audit/tls/ca.crt
-  cert_file: /etc/compute-audit/tls/client.crt
-  key_file: /etc/compute-audit/tls/client.key
-spool:
-  directory: /var/lib/compute-audit/spool
-  max_bytes: 536870912
-```
+昇腾节点从 [`configs/agent.ascend.example.yaml`](configs/agent.ascend.example.yaml) 创建配置，并按 910B 实机上 HDK 配套的 Exporter `/metrics` 样例填写 metric 名、宿主 PID 标签和设备标识标签。内存字段/单位只有核实实际指标后才配置；未知源刷新时间时保留 `source_time_known: false`。不能将模板中的 `REPLACE_WITH_*` 直接投入运行。
 
-昇腾节点改 `host_id: npu01`、`vendor: ascend`，并将 `metrics_url` 改为该机实际可访问的 NPU Exporter 地址（例如 `http://10.10.0.22:8082/metrics`）。中心 DNS 必须可解析，证书 SAN 匹配；不能使用其他节点的 host_id。混合卡节点需研发支持双采集器配置，不强行使用单 vendor 示例。
+中心 DNS 必须可解析，证书 SAN 匹配；每个证书 CN 必须与登记的 `host_id` 一致，不能借用其他节点的主机身份。程序支持 `vendor: mixed`，但双采集器模式尚未做真实主机组合验证。
 
 创建 `/etc/systemd/system/audit-agent.service`（自研约定，初期可用 root 试点以验证宿主 PID 可见性；须经审批，生产逐步收紧权限）：
 

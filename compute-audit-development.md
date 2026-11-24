@@ -1,7 +1,13 @@
 # 异构智算资源无侵入式审计系统 — 开发文档
 
 > 版本：v1.0（一期 PoC 开发基线） | 日期：2026-11-24  
-> 适用对象：研发工程师、实施工程师、编码 Agent。本文为待实现设计，不代表已交付代码或已通过实机测试。
+> 适用对象：研发工程师、实施工程师、编码 Agent。文中区分已实现骨架、待实现需求和实机验证事项；编译不等于功能验收。
+
+## 当前开发状态（2026-11-24）
+
+已落地的代码包括 audit-server 的 mTLS 快照接收、主机登记入口、MySQL 迁移/幂等入库，以及 audit-agent 的 NVIDIA `nvidia-smi` 进程采集、可配置 Ascend Prometheus 指标解析、`/proc` PID/start_ticks/cgroup/netns 读取、Docker/systemd cgroup 归组、磁盘队列、mTLS 上报、ACK 删除、永久拒绝隔离和网络失败指数退避。Agent 会在上报绑定前复核 PID 的 `start_ticks`，并在快照过大时压缩可选数据、裁剪记录且标记采集不完整。
+
+当前仍未完成：监听 socket/IP/端口采集、Docker 元数据查询、进程生命周期历史展开、DeepFlow schema/SQL 查询与请求归因、告警规则与通知、Prometheus/Grafana 仪表盘及数据源配置、真实 exporter 指标映射、主机证书/镜像 digest 的正式交付流程。昇腾模板中的 metric/label 是待现场替换占位符。仓库构建检查尚不能替代 NVIDIA 与 910B 实机联调；开发阶段目标规模仍为各一台服务器。
 
 ## 1. 项目目标与边界
 

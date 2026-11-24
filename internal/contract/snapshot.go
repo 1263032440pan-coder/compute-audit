@@ -38,9 +38,11 @@ const (
 
 type Process struct {
 	PID               int    `json:"pid"`
+	PPID              int    `json:"ppid,omitempty"`
 	StartTicks        uint64 `json:"start_ticks"`
 	ServiceInstanceID string `json:"service_instance_id,omitempty"`
 	NetNS             string `json:"netns,omitempty"`
+	CGroup            string `json:"cgroup,omitempty"`
 }
 
 type Service struct {
